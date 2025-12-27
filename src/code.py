@@ -245,6 +245,8 @@ def compute_player_kinematics(
     dt = 1.0 / float(fps)
     bases = _player_bases(out)
 
+    new_cols: dict[str, np.ndarray] = {}
+    ball_dir = None
     if compute_ball:
         if not {"ball_x", "ball_y"}.issubset(out.columns):
             raise ValueError("Missing ball_x/ball_y")
@@ -263,12 +265,10 @@ def compute_player_kinematics(
         ball_speed = np.hypot(ball_vx, ball_vy)
         ball_dir = np.degrees(np.arctan2(ball_vy, ball_vx))
         ball_dir = np.where(ball_speed >= direction_min_speed, _wrap_360(ball_dir), np.nan)
-        out["ball_vx"] = ball_vx
-        out["ball_vy"] = ball_vy
-        out["ball_speed"] = ball_speed
-        out["ball_dir"] = ball_dir
-
-    new_cols: dict[str, np.ndarray] = {}
+        new_cols["ball_vx"] = ball_vx
+        new_cols["ball_vy"] = ball_vy
+        new_cols["ball_speed"] = ball_speed
+        new_cols["ball_dir"] = ball_dir
 
     for b in bases:
         x = out[f"{b}_x"].astype(float)
@@ -337,19 +337,19 @@ def compute_player_kinematics(
         new_cols[f"{b}_dacc"] = dacc
         new_cols[f"{b}_dir"] = dir_abs
 
-        if compute_ball and {"ball_x", "ball_y"}.issubset(out.columns):
-            bearing = _wrap_360(np.degrees(np.arctan2(out["ball_y"] - y_s, out["ball_x"] - x_s)))
+        if compute_ball and ball_dir is not None:
+            bearing = _wrap_360(np.degrees(np.arctan2(by - y_s, bx - x_s)))
             new_cols[f"{b}_dir_to_ball"] = bearing
-            if "ball_dir" in out.columns:
-                rel = _wrap_360(dir_abs - out["ball_dir"])
-                new_cols[f"{b}_dir_rel_ball"] = rel
-                new_cols[f"{b}_dir_rel_ball180"] = _wrap_180(rel)
+            rel = _wrap_360(dir_abs - ball_dir)
+            new_cols[f"{b}_dir_rel_ball"] = rel
+            new_cols[f"{b}_dir_rel_ball180"] = _wrap_180(rel)
             aim = _wrap_360(dir_abs - bearing)
             new_cols[f"{b}_aim_error_to_ball"] = aim
             new_cols[f"{b}_aim_error_to_ball180"] = _wrap_180(aim)
 
     if new_cols:
-        out = out.assign(**new_cols)
+        out = out.copy()
+        out = pd.concat([out, pd.DataFrame(new_cols)], axis=1)
 
     return out
 
